@@ -129,4 +129,5 @@ dmypy.json
 .pyre/
 
 #Custom Token Files
-.token
+*.token
+*.env

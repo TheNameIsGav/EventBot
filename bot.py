@@ -1,7 +1,7 @@
 ##python bot.py
 
 import os
-import datetime
+from datetime import datetime, timezone
 import discord
 import threading
 from dotenv import load_dotenv
@@ -12,21 +12,31 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD = os.getenv('DISCORD_GUILD')
 
 client = discord.Client()
-currentTime = datetime.datetime.now()
+startTime = datetime.now()
 amOnline = False
 
 def taskTimer():
     if(amOnline):
         checkTasks()
-        #                           \/ Time in seconds between Checks
-        mytimer = threading.Timer(3600.0, taskTimer)
+        #Every 15 minutes check for events 30 minutes in the future
+        mytimer = threading.Timer(900.0, taskTimer)
         mytimer.start()
+
+def checkTasks():
+    minThresh = 30
+    currentTime = datetime.now(tz=timezone.utc).timestamp()
+    with open ('tasks.csv', 'r') as file:
+        for line in file:
+            event = line.split(',')
+            if (float(event[0]) - currentTime)/60 < minThresh:
+                #remind user that they have a meeting in x minutes
+                return
 
 @client.event
 async def on_ready():
     global amOnline
     print('We have logged in as {0.user}'.format(client))
-    print('Setting current time as {0}'.format(currentTime))
+    print('Setting current time as {0}'.format(startTime))
     amOnline = True
 
     #starting timer

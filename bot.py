@@ -2,9 +2,10 @@
 
 import os
 from datetime import datetime, timezone
+import asyncio
 import discord
-import threading
 from dotenv import load_dotenv
+import math
 
 load_dotenv()
 
@@ -15,22 +16,81 @@ client = discord.Client()
 startTime = datetime.now()
 amOnline = False
 
-def taskTimer():
-    if(amOnline):
-        checkTasks()
-        #Every 15 minutes check for events 30 minutes in the future
-        mytimer = threading.Timer(900.0, taskTimer)
-        mytimer.start()
 
-def checkTasks():
+async def taskTimer():
+    global amOnline
+    loop = asyncio.get_running_loop()
+    end_time = loop.time() + 1.0
+    while True:
+        print("Checking tasks at {0}".format(datetime.now()))
+        await checkTasks()
+        #todo await updateTasks (remove tasks that have been completed)
+        if(not amOnline):
+            break
+        await asyncio.sleep(15)
+
+async def checkTasks():
     minThresh = 30
     currentTime = datetime.now(tz=timezone.utc).timestamp()
     with open ('tasks.csv', 'r') as file:
         for line in file:
             event = line.split(',')
-            if (float(event[0]) - currentTime)/60 < minThresh:
+            mins = (float(event[0]) - currentTime)/60
+            realTime = datetime.fromtimestamp(float(event[0]), tz=timezone.utc)
+            realTime = realTime.replace(tzinfo=timezone.utc).astimezone(tz=None)
+            realTime = realTime.time()
+            realTime = timeConvert(realTime)
+            if mins < minThresh and mins > 0:
                 #remind user that they have a meeting in x minutes
-                return
+                user = await client.fetch_user(int(event[1]))
+                if not user == None:
+                    try: 
+                        description = event[2]
+                    except IndexError:
+                        await user.send("You have a meeting at {0}, which is in {1} minutes".format(realTime, mins))
+                    else:
+                        await user.send("You have a meeting at {0}, which is in about {1} minute(s)\n\nYou gave the description as:\n {2}".format(realTime, math.floor(mins), description))
+    return
+
+def timeConvert(miliTime):
+    hours, minutes, seconds = str(miliTime).split(":")
+    hours, minutes = int(hours), int(minutes)
+    setting = "AM"
+    if hours > 12:
+        setting = "PM"
+        hours -= 12
+    return (("%02d:%02d " + setting) % (hours, minutes))
+
+def addTask(inputString, author):
+    split = inputString.split('|')
+    date = split[0]
+    time = split[1]
+    description = ""
+    hasDescription = False
+    try:
+        description = split[2]
+    except IndexError:
+        hasDescription = False
+    else:
+        hasDescription = True
+
+    splitDate = date.split(',')
+    splitTime = time.split(':')
+    newDate = datetime(int(splitDate[2].strip()), 
+                        int(splitDate[0].strip()), 
+                        int(splitDate[1].strip()), 
+                        int(splitTime[0].strip()), 
+                        int(splitTime[1].strip())
+                        )
+
+    writableDate = newDate.fromtimestamp(newDate.timestamp(), tz=timezone.utc).timestamp()
+
+    with open ('tasks.csv', 'a') as file:
+        if not hasDescription:
+            file.write('{0},{1}\n'.format(writableDate, author))
+        else:
+            file.write('{0},{1},{2}\n'.format(writableDate, author, description))
+    
 
 @client.event
 async def on_ready():
@@ -40,7 +100,7 @@ async def on_ready():
     amOnline = True
 
     #starting timer
-    taskTimer()
+    await taskTimer()
 
 @client.event
 async def on_message(message):
@@ -50,13 +110,19 @@ async def on_message(message):
     if message.content.startswith('$hello'):
         await message.channel.send('Hello!')
 
+    if message.content.startswith('$addTask'):
+        addTask(message.content[9:], message.author.id)
+        await message.channel.send('Added task to internal calender')
+
+    if message.content.startswith('$help'):
+        await message.channel.send('Task format is: \n $addTask Month, Day, Year | HH:MM (In Military) | Description (If applicable)')
+
     if message.content.startswith('$quit'):
         global amOnline
         amOnline = False
+            
         print("Shutting down")
         await message.channel.send('Shutting down!')
         exit(1)
-
-
 
 client.run(TOKEN)

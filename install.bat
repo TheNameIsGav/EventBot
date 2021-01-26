@@ -5,6 +5,7 @@ if ERRORLEVEL 1 goto NoPython
 echo Python Installed: Installing packages
 pip install discord.py
 pip install -U python-dotenv
+git clone https://github.com/TheNameIsGav/EventBot.git
 run.bat
 goto:eof
 

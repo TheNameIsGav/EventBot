@@ -32,24 +32,41 @@ async def taskTimer():
 async def checkTasks():
     minThresh = 30
     currentTime = datetime.now(tz=timezone.utc).timestamp()
+
+    lines = []
+
     with open ('tasks.csv', 'r') as file:
-        for line in file:
-            event = line.split(',')
-            mins = (float(event[0]) - currentTime)/60
-            realTime = datetime.fromtimestamp(float(event[0]), tz=timezone.utc)
-            realTime = realTime.replace(tzinfo=timezone.utc).astimezone(tz=None)
-            realTime = realTime.time()
-            realTime = timeConvert(realTime)
-            if mins < minThresh and mins > 0:
-                #remind user that they have a meeting in x minutes
-                user = await client.fetch_user(int(event[1]))
-                if not user == None:
-                    try: 
-                        description = event[2]
-                    except IndexError:
-                        await user.send("You have a meeting at {0}, which is in {1} minutes".format(realTime, mins))
-                    else:
-                        await user.send("You have a meeting at {0}, which is in about {1} minute(s)\n\nYou gave the description as:\n {2}".format(realTime, math.floor(mins), description))
+        lines = file.readlines()
+
+    for line in lines:
+        event = line.split(',')
+
+        #Time conversion from UTC timstamp to Local Standard Time
+        mins = (float(event[0]) - currentTime)/60
+        realTime = datetime.fromtimestamp(float(event[0]), tz=timezone.utc)
+        realTime = realTime.replace(tzinfo=timezone.utc).astimezone(tz=None)
+        realTime = realTime.time()
+        realTime = timeConvert(realTime)
+        if mins < minThresh and mins > 0:
+            #remind user that they have a meeting in x minutes
+            user = await client.fetch_user(int(event[1]))
+            if not user == None:
+                try: 
+                    description = event[2]
+                except IndexError:
+                    await user.send("You have a meeting at {0}, which is in {1} minutes".format(realTime, mins))
+                else:
+                    await user.send("You have a meeting at {0}, which is in about {1} minute(s)\n\nYou gave the description as:\n {2}".format(realTime, math.floor(mins), description))
+        #Checks to see if the task is in the past, and marks for deletiong                            
+        if mins < 0:
+            del lines[lines.index(line)]
+    
+    with open ('tasks.csv', 'w') as file:
+        for line in lines:
+            file.write(line)
+    
+    #Handles deleting marked events during a check task
+    
     return
 
 def timeConvert(miliTime):

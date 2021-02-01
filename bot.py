@@ -130,14 +130,18 @@ async def on_message(message):
     if message.author == client.user:
         return
 
-    #Test function to assure teh bot works correct
+    #Test function to assure the bot works correct
     if message.content.startswith('$hello'):
         await message.channel.send('Hello!')
 
     #Function to add task to the internal calender (csv file)
     if message.content.startswith('$addTask'):
-        addTask(message.content[9:], message.author.id)
-        await message.channel.send('Added task to internal calender')
+        try:
+            addTask(message.content[9:], message.author.id)
+        except: #Catches all errors (very rough)
+            await message.channel.send('Invalid command format')
+        else:
+            await message.channel.send('Added task to internal calender')
 
     #Sends a help command giving the format of the command
     if message.content.startswith('$help'):

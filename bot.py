@@ -4,16 +4,18 @@ import os
 from datetime import datetime, timezone
 import asyncio
 import discord
+from discord.ext import commands
 from dotenv import load_dotenv
+from collections.abc import Sequence
 import math
+import json
 
 load_dotenv()
 
 TOKEN = os.getenv('DISCORD_TOKEN')
 GUILD = os.getenv('DISCORD_GUILD')
 
-client = discord.Client()
-startTime = datetime.now()
+client = commands.Bot(command_prefix='$')
 amOnline = False
 
 #Starts multithreaded timer to check tasks at the interval
@@ -24,13 +26,124 @@ async def taskTimer():
     while True:
         print("Checking tasks at {0}".format(datetime.now()))
         await checkTasks()
-        #todo await updateTasks (remove tasks that have been completed)
         if(not amOnline):
             break
-        await asyncio.sleep(900) #number of seconds in the interval to check tasks
-        #currently set to 15 minutes
+        await asyncio.sleep(300) #number of seconds in the interval to check tasks
+        #15 mins is 900 seconds
+
+@client.command()
+async def addTask(ctx, *args):
+    users = []
+    taskAuthor = ctx.author.id
+    if len(args) == 0: #individual task
+        await ctx.author.send("Created new individual task")
+        users.append(await client.fetch_user(ctx.author))
+    else:
+        displayUsers = []
+        for member in ctx.message.mentions:
+            user = await client.fetch_user(member.id)
+            displayUsers.append(user.display_name)
+            users.append(member.id)
+        await ctx.author.send("Created new team task with {} as participants".format(", ".join(displayUsers)))
+
+    await ctx.author.send('Type \'QUIT\' at any time to exit task creation\nWhat date is this meeting on? (Month, Day, Year)')
+    date = (await client.wait_for('message', check=message_check(channel=ctx.author.dm_channel))).content
+    
+    if checkQuit(date):
+        await ctx.author.send("cancelled task creation")
+        return
+
+    await ctx.author.send('What time is this meeting at? (HH:MM)')
+    time = (await client.wait_for('message', check=message_check(channel=ctx.author.dm_channel))).content
+
+    if checkQuit(time):
+        await ctx.author.send("cancelled task creation")
+        return
+
+    await ctx.author.send('Please add a description. If there is none, send \'no\'')
+    description = (await client.wait_for('message', check=message_check(channel=ctx.author.dm_channel))).content
+
+    if 'no' == description:
+        description = ""
+    
+    if checkQuit(description):
+        await ctx.author.send("cancelled task creation")
+        return
+
+    splitDate = date.split(',')
+    splitTime = time.split(':')
+    newDate = datetime(int(splitDate[2].strip()), 
+                        int(splitDate[0].strip()), 
+                        int(splitDate[1].strip()), 
+                        int(splitTime[0].strip()), 
+                        int(splitTime[1].strip())
+                        )
+
+    writableDate = newDate.fromtimestamp(newDate.timestamp(), tz=timezone.utc).timestamp()
+    
+
+    task = {}
+    task['author'] = taskAuthor
+    task['users'] = users
+    task['timestamp'] = writableDate
+    task['description'] = description
+
+    with open('tasks.json', 'a') as file:
+        json.dump(task, file)
+
+    await ctx.author.send('Added task to internal calender')
+
+def make_sequence(seq):
+    if seq is None:
+        return ()
+    if isinstance(seq, Sequence) and not isinstance(seq, str):
+        return seq
+    else:
+        return (seq,)
+
+def message_check(channel=None, author=None, content=None, ignore_bot=True):
+    channel = make_sequence(channel)
+    author = make_sequence(author)
+    content = make_sequence(content)
+    def check(message):
+        if ignore_bot and message.author.bot:
+            return False
+        if channel and message.channel not in channel:
+            return False
+        if author and message.author not in author:
+            return False
+        actual_content = message.content
+        if content and actual_content not in content:
+            return False
+        return True
+    return check
 
 async def checkTasks():
+    with open("tasks.json", "r") as file:
+        for line in file:
+            newDict = json.loads(line)
+            print(newDict)
+
+def checkQuit(messageContent):
+    if 'QUIT' in messageContent:
+        return True
+    else:
+        return False
+
+@client.event
+async def on_ready():
+    global amOnline
+    print('We have logged in as {0.user}'.format(client))
+    print('Logged in at time {}'.format(datetime.now()))
+    amOnline = True
+    await taskTimer()
+
+'''
+async def checkTasks():
+
+    #json loading
+    #json.loads(stringDict)
+
     minThresh = 30 #minutes in advance to check for tasks
 
     currentTime = datetime.now(tz=timezone.utc).timestamp()
@@ -41,7 +154,7 @@ async def checkTasks():
 
     for line in lines:
         event = line.split(',')
-
+ 
         #Time conversion from UTC timstamp to Local Standard Time
         mins = (float(event[0]) - currentTime)/60
         realTime = datetime.fromtimestamp(float(event[0]), tz=timezone.utc)
@@ -111,7 +224,7 @@ def addTask(inputString, author):
             file.write('{0},{1}\n'.format(writableDate, author))
         else:
             file.write('{0},{1},{2}\n'.format(writableDate, author, description))
-    
+
 #On Ready event for Discord API. Starts the timer
 @client.event
 async def on_ready():
@@ -158,4 +271,8 @@ async def on_message(message):
             await message.channel.send('Shutting down!')
             exit(1)
 
+#Group meetings
+#author and participants
+#direct message functionality
+'''
 client.run(TOKEN)

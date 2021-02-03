@@ -81,15 +81,16 @@ async def addTask(ctx, *args):
 
     writableDate = newDate.fromtimestamp(newDate.timestamp(), tz=timezone.utc).timestamp()
     
-
     task = {}
     task['author'] = taskAuthor
     task['users'] = users
     task['timestamp'] = writableDate
     task['description'] = description
+    task['passed'] = False
 
     with open('tasks.json', 'a') as file:
         json.dump(task, file)
+        file.write('\n')
 
     await ctx.author.send('Added task to internal calender')
 
@@ -118,69 +119,47 @@ def message_check(channel=None, author=None, content=None, ignore_bot=True):
         return True
     return check
 
-async def checkTasks():
-    with open("tasks.json", "r") as file:
-        for line in file:
-            newDict = json.loads(line)
-            print(newDict)
-
 def checkQuit(messageContent):
     if 'QUIT' in messageContent:
         return True
     else:
         return False
 
-@client.event
-async def on_ready():
-    global amOnline
-    print('We have logged in as {0.user}'.format(client))
-    print('Logged in at time {}'.format(datetime.now()))
-    amOnline = True
-    await taskTimer()
-
-'''
 async def checkTasks():
 
-    #json loading
-    #json.loads(stringDict)
-
-    minThresh = 30 #minutes in advance to check for tasks
-
+    minuteCheckThresh = 30
     currentTime = datetime.now(tz=timezone.utc).timestamp()
-    lines = []
-
-    with open ('tasks.csv', 'r') as file:
-        lines = file.readlines()
-
-    for line in lines:
-        event = line.split(',')
- 
-        #Time conversion from UTC timstamp to Local Standard Time
-        mins = (float(event[0]) - currentTime)/60
-        realTime = datetime.fromtimestamp(float(event[0]), tz=timezone.utc)
+    
+    tasks = []
+    with open("tasks.json", "r") as file:
+        for line in file:
+            newDict = json.loads(line)
+            tasks.append(newDict)
+            
+    for task in tasks:
+        mins = (task['timestamp'] - currentTime)/60
+        realTime = datetime.fromtimestamp(task['timestamp'], tz=timezone.utc)
         realTime = realTime.replace(tzinfo=timezone.utc).astimezone(tz=None)
         realTime = realTime.time()
         realTime = timeConvert(realTime)
-        if mins < minThresh and mins > 0:
-            #remind user that they have a meeting in x minutes
-            user = await client.fetch_user(int(event[1]))
-            if not user == None:
-                try: 
-                    description = event[2]
-                except IndexError:
-                    await user.send("You have a meeting at {0}, which is in {1} minutes".format(realTime, mins))
-                else:
-                    await user.send("You have a meeting at {0}, which is in about {1} minute(s)\n\nYou gave the description as:\n {2}".format(realTime, math.floor(mins), description))
+        tmpAuthor = (await client.fetch_user(task['author'])).display_name
 
-        #Checks to see if the task is in the past, and if so deletes it from the lines                          
+        if mins < minuteCheckThresh and mins > 0:
+            #remind user that they have a meeting in x minutes
+            for id in task['users']:
+                user = await client.fetch_user(id)
+                if not user == None:
+                    await user.send("You have a meeting at {0}, which is in about {1} minutes, with description of: {2}\nthe author of this meeting is {3}".format(realTime, round(mins, 1), task['description'], tmpAuthor))
+
         if mins < 0:
-            del lines[lines.index(line)]
-    
-    #rewrites the file without tasks in the past
-    with open ('tasks.csv', 'w') as file:
-        for line in lines:
-            file.write(line)
-    
+            task['passed'] = True
+
+    with open ('tasks.json', 'w') as file:
+        for task in tasks:
+            if not task['passed']:
+                json.dump(task, file)
+                file.write('\n')
+
     return
 
 #converts time from military time to standard time
@@ -193,49 +172,16 @@ def timeConvert(miliTime):
         hours -= 12
     return (("%02d:%02d " + setting) % (hours, minutes))
 
-#command called when a user executes the $addTask function
-#little to no error checking, so precise commands are a current nessecity
-def addTask(inputString, author):
-    split = inputString.split('|')
-    date = split[0]
-    time = split[1]
-    description = ""
-    hasDescription = False
-    try:
-        description = split[2]
-    except IndexError:
-        hasDescription = False
-    else:
-        hasDescription = True
 
-    splitDate = date.split(',')
-    splitTime = time.split(':')
-    newDate = datetime(int(splitDate[2].strip()), 
-                        int(splitDate[0].strip()), 
-                        int(splitDate[1].strip()), 
-                        int(splitTime[0].strip()), 
-                        int(splitTime[1].strip())
-                        )
-
-    writableDate = newDate.fromtimestamp(newDate.timestamp(), tz=timezone.utc).timestamp()
-
-    with open ('tasks.csv', 'a') as file:
-        if not hasDescription:
-            file.write('{0},{1}\n'.format(writableDate, author))
-        else:
-            file.write('{0},{1},{2}\n'.format(writableDate, author, description))
-
-#On Ready event for Discord API. Starts the timer
 @client.event
 async def on_ready():
     global amOnline
     print('We have logged in as {0.user}'.format(client))
-    print('Current time is {0}'.format(startTime))
+    print('Logged in at time {}'.format(datetime.now()))
     amOnline = True
-
-    #starting timer
     await taskTimer()
 
+'''
 #Sets up Discord API on_message event, which is called whenever the bot sees a message. 
 @client.event
 async def on_message(message):

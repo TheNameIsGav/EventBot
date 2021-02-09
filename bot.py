@@ -7,7 +7,6 @@ import discord
 from discord.ext import commands
 from dotenv import load_dotenv
 from collections.abc import Sequence
-import math
 import json
 
 load_dotenv()
@@ -35,11 +34,14 @@ async def taskTimer():
 async def addTask(ctx, *args):
     users = []
     taskAuthor = ctx.author.id
+    groupTask = False
     if len(args) == 0: #individual task
-        await ctx.author.send("Created new individual task")
-        users.append(await client.fetch_user(ctx.author))
+        await ctx.author.send("Setting up new individual task")
+        users.append((await client.fetch_user(ctx.author.id)).id)
     else:
+        groupTask = True
         displayUsers = []
+        await ctx.author.send("Setting up new group task")
         for member in ctx.message.mentions:
             user = await client.fetch_user(member.id)
             displayUsers.append(user.display_name)
@@ -64,7 +66,7 @@ async def addTask(ctx, *args):
     description = (await client.wait_for('message', check=message_check(channel=ctx.author.dm_channel))).content
 
     if 'no' == description:
-        description = ""
+        description = "No description given"
     
     if checkQuit(description):
         await ctx.author.send("cancelled task creation")
@@ -93,6 +95,12 @@ async def addTask(ctx, *args):
         file.write('\n')
 
     await ctx.author.send('Added task to internal calender')
+    
+    if(groupTask):
+        for id in users:
+            if not id == taskAuthor:
+                user = await client.fetch_user(id)
+                await user.send("You have been added to a group meeting at {} by {} with description ".format(newDate, ctx.author.display_name, description))
 
 def make_sequence(seq):
     if seq is None:
@@ -182,6 +190,10 @@ async def on_ready():
     await taskTimer()
 
 '''
+add command to see users calender events
+tell users when they are added to a group meeting
+Fix error with individual meetings
+
 #Sets up Discord API on_message event, which is called whenever the bot sees a message. 
 @client.event
 async def on_message(message):
@@ -216,9 +228,6 @@ async def on_message(message):
             print("Shutting down")
             await message.channel.send('Shutting down!')
             exit(1)
-
-#Group meetings
-#author and participants
-#direct message functionality
 '''
+
 client.run(TOKEN)
